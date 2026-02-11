@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Stox — Stock Analysis Dashboard</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <script src="https://cdn.plot.ly/plotly-2.35.0.min.js"></script>
+</head>
+<body>
+    <header>
+        <div class="search-container">
+            <h1>Stox</h1>
+            <form id="search-form">
+                <input type="text" id="ticker-input" placeholder="Enter ticker symbol (e.g. AAPL)" autocomplete="off" spellcheck="false">
+                <button type="submit">Analyze</button>
+            </form>
+        </div>
+    </header>
+
+    <main id="main-content" class="hidden">
+        <div class="panel-left" id="panel-left">
+            <div class="card stock-info">
+                <h2 id="company-name">—</h2>
+                <div class="ticker-row">
+                    <span class="ticker" id="ticker">—</span>
+                    <span class="price" id="current-price">—</span>
+                    <span class="change" id="change">—</span>
+                </div>
+            </div>
+
+            <div class="card trade-setup" id="trade-setup-card">
+                <h3>Trade Setup</h3>
+                <div class="setup-row buy">
+                    <span class="label">Initial Buy</span>
+                    <span class="value" id="buy-price">—</span>
+                </div>
+                <div class="setup-row stop">
+                    <span class="label">Stop Loss</span>
+                    <span class="value" id="stop-loss">—</span>
+                </div>
+                <div class="setup-row profit">
+                    <span class="label">Take Profit</span>
+                    <span class="value" id="take-profit">—</span>
+                </div>
+                <div class="setup-row neutral">
+                    <span class="label">Risk / Reward</span>
+                    <span class="value" id="risk-reward">—</span>
+                </div>
+            </div>
+
+            <div class="card signal-info" id="signal-card">
+                <h3>Signal</h3>
+                <div class="signal-type" id="signal-type">—</div>
+                <div class="signal-date" id="signal-date">—</div>
+            </div>
+        </div>
+
+        <div class="panel-right">
+            <div id="chart"></div>
+        </div>
+    </main>
+
+    <div id="loading" class="hidden">
+        <div class="spinner"></div>
+        <p>Fetching data...</p>
+    </div>
+
+    <div id="error-message" class="hidden"></div>
+
+    <script>
+        const form = document.getElementById('search-form');
+        const input = document.getElementById('ticker-input');
+        const main = document.getElementById('main-content');
+        const loading = document.getElementById('loading');
+        const errorMsg = document.getElementById('error-message');
+
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const ticker = input.value.trim();
+            if (!ticker) return;
+
+            main.classList.add('hidden');
+            errorMsg.classList.add('hidden');
+            loading.classList.remove('hidden');
+
+            try {
+                const resp = await fetch('/analyze', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ ticker }),
+                });
+
+                const data = await resp.json();
+
+                if (!resp.ok) {
+                    throw new Error(data.error || 'Unknown error');
+                }
+
+                populateData(data);
+                loading.classList.add('hidden');
+                main.classList.remove('hidden');
+            } catch (err) {
+                loading.classList.add('hidden');
+                errorMsg.textContent = err.message;
+                errorMsg.classList.remove('hidden');
+            }
+        });
+
+        function populateData(data) {
+            document.getElementById('company-name').textContent = data.company_name;
+            document.getElementById('ticker').textContent = data.ticker;
+            document.getElementById('current-price').textContent = `$${data.current_price}`;
+
+            const changeEl = document.getElementById('change');
+            const sign = data.change_dollar >= 0 ? '+' : '';
+            changeEl.textContent = `${sign}$${data.change_dollar} (${sign}${data.change_pct}%)`;
+            changeEl.className = `change ${data.change_dollar >= 0 ? 'up' : 'down'}`;
+
+            const setup = data.trade_setup;
+            if (setup) {
+                document.getElementById('buy-price').textContent = `$${setup.buy_price}`;
+                document.getElementById('stop-loss').textContent = `$${setup.stop_loss}`;
+                document.getElementById('take-profit').textContent = `$${setup.take_profit}`;
+                document.getElementById('risk-reward').textContent = setup.risk_reward;
+                document.getElementById('signal-type').textContent = setup.signal_type;
+                document.getElementById('signal-date').textContent = setup.signal_date;
+                document.getElementById('trade-setup-card').classList.remove('no-signal');
+                document.getElementById('signal-card').classList.remove('no-signal');
+            } else {
+                document.getElementById('trade-setup-card').classList.add('no-signal');
+                document.getElementById('signal-card').classList.add('no-signal');
+                document.getElementById('buy-price').textContent = '—';
+                document.getElementById('stop-loss').textContent = '—';
+                document.getElementById('take-profit').textContent = '—';
+                document.getElementById('risk-reward').textContent = '—';
+                document.getElementById('signal-type').textContent = 'No active buy signal';
+                document.getElementById('signal-date').textContent = '';
+            }
+
+            // Render Plotly chart
+            const chartData = data.chart;
+            Plotly.newPlot('chart', chartData.data, chartData.layout, {
+                responsive: true,
+                displayModeBar: true,
+                modeBarButtonsToRemove: ['lasso2d', 'select2d'],
+            });
+        }
+    </script>
+</body>
+</html>
